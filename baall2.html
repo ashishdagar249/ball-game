@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Platform Ball Game — V8</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif;user-select:none}
+    #wrapper{position:relative}
+    #game{background:#fafafa;border:2px solid #444;border-radius:10px;display:block}
+    #hud{position:absolute;top:40px;left:50%;transform:translateX(-50%);font-size:1.2rem;pointer-events:none}
+    #overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.65);display:flex;flex-direction:column;justify-content:center;align-items:center;visibility:hidden;z-index:10}
+    #overlay span{font-size:2rem;margin-bottom:1rem;text-align:center;white-space:pre-line}
+    button{padding:10px 24px;font-size:1rem;border:none;border-radius:6px;cursor:pointer;background:#5cb85c;color:#fff;animation:pulse 1.5s infinite;}
+    button:hover{opacity:.9}
+    @keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
+    #title { position:absolute; top:8px; left:50%; transform:translateX(-50%); font-size:1.5rem; font-weight:bold; color:#ff4081; pointer-events:none; }
+    #startScreen { position:absolute;top:0;left:0;width:100%;height:100%;background:#000a;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9; }
+    #startScreen button { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div id="wrapper">
+    <div id="title">LOVE GAMING</div>
+    <canvas id="game" width="400" height="600"></canvas>
+    <div id="hud">Score: <span id="score">0</span></div>
+    <div id="overlay">
+      <span id="msg"></span>
+      <button id="restart">Restart</button>
+    </div>
+    <div id="startScreen">
+      <span style="font-size: 2rem; color: white; text-align: center">Tap to Start</span>
+      <button onclick="startGame()">Start Game</button>
+    </div>
+  </div>
+  <script>
+    const canvas=document.getElementById('game');
+    const ctx=canvas.getContext('2d');
+
+    const GRAVITY=0.6;
+    const JUMP_VELOCITY=-12;
+    const BALL_RADIUS=12;
+    const PLATFORM_WIDTH=80;
+    const PLATFORM_HEIGHT=10;
+
+    const MAX_GAP_X=120;
+    const MIN_GAP_Y=60;
+    const MAX_GAP_Y=110;
+
+    const PLATFORM_MOVE_RANGE_MIN=30;
+    const PLATFORM_MOVE_RANGE_MAX=80;
+
+    const PROB_MOVING=0.7;
+    const PROB_BREAK=0.15;
+    const PROB_NORMAL=0.15;
+
+    const PLATFORM_TYPES={NORMAL:'normal',MOVING:'moving',BREAK:'break'};
+
+    const keys={left:false,right:false};
+    let ball,platforms,score,gameOver,gameStarted=false;
+
+    document.addEventListener('keydown',e=>{
+      if(e.key==='ArrowLeft')keys.left=true;
+      if(e.key==='ArrowRight')keys.right=true;
+      if(e.key.toLowerCase()==='r'&&gameOver)reset();
+    });
+
+    document.addEventListener('keyup',e=>{
+      if(e.key==='ArrowLeft')keys.left=false;
+      if(e.key==='ArrowRight')keys.right=false;
+    });
+
+    function startGame(){
+      document.getElementById('startScreen').style.display='none';
+      reset();
+    }
+
+    function reset(){
+      platforms=[];
+      score=0;document.getElementById('score').textContent=score;
+      const startPlat=createRigidPlatform(canvas.width/2-PLATFORM_WIDTH/2,canvas.height-60);
+      platforms.push(startPlat);
+      ball={x:startPlat.x+PLATFORM_WIDTH/2,y:startPlat.y-BALL_RADIUS,vx:0,vy:0,radius:BALL_RADIUS};
+
+      let prevX=startPlat.x;
+      let currentY=startPlat.y-randomRange(MIN_GAP_Y,MAX_GAP_Y);
+      while(currentY>-canvas.height*2){
+        const p=createPlatform(currentY,prevX);
+        platforms.push(p);
+        prevX=p.x;
+        currentY-=randomRange(MIN_GAP_Y,MAX_GAP_Y);
+      }
+
+      gameOver=false;document.getElementById('overlay').style.visibility='hidden';
+      requestAnimationFrame(loop);
+    }
+
+    function createRigidPlatform(x,y){
+      return{x,y,width:PLATFORM_WIDTH,height:PLATFORM_HEIGHT,vx:0,vy:0,originX:x,originY:y,rangeX:0,rangeY:0,type:PLATFORM_TYPES.NORMAL,broken:false};
+    }
+
+    function createPlatform(y,prevX){
+      const r=Math.random();let type;
+      if(r<PROB_MOVING)type=PLATFORM_TYPES.MOVING;else if(r<PROB_MOVING+PROB_BREAK)type=PLATFORM_TYPES.BREAK;else type=PLATFORM_TYPES.NORMAL;
+      const minX=clamp(prevX-MAX_GAP_X,0,canvas.width-PLATFORM_WIDTH);
+      const maxX=clamp(prevX+MAX_GAP_X,0,canvas.width-PLATFORM_WIDTH);
+      const originX=randomRange(minX,maxX);
+
+      let vx=0,vy=0,rangeX=0,rangeY=0;
+      const originY=y;
+
+      if(type===PLATFORM_TYPES.MOVING){
+        const horizontalFav=Math.random()<0.5;
+        if(horizontalFav){
+          const maxExtra=MAX_GAP_X-Math.abs(originX-prevX);
+          if(maxExtra<PLATFORM_MOVE_RANGE_MIN){
+            rangeY=randomRange(PLATFORM_MOVE_RANGE_MIN,Math.min(PLATFORM_MOVE_RANGE_MAX,(MAX_GAP_Y-MIN_GAP_Y)/2));
+            vy=randomRange(0.5,1.5);
+          }else{
+            rangeX=randomRange(PLATFORM_MOVE_RANGE_MIN,Math.min(PLATFORM_MOVE_RANGE_MAX,maxExtra));
+            vx=randomRange(0.5,2);
+          }
+        }else{
+          rangeY=randomRange(PLATFORM_MOVE_RANGE_MIN,Math.min(PLATFORM_MOVE_RANGE_MAX,(MAX_GAP_Y-MIN_GAP_Y)/2));
+          vy=randomRange(0.5,1.5);
+        }
+      }
+      return{x:originX,y:originY,width:PLATFORM_WIDTH,height:PLATFORM_HEIGHT,vx,vy,originX,originY,rangeX,rangeY,type,broken:false};
+    }
+
+    function randomRange(min,max){return Math.random()*(max-min)+min;}
+    function clamp(v,min,max){return Math.max(min,Math.min(v,max));}
+
+    function update(){
+      const MOVE_SPEED=6;
+      if(keys.left)ball.vx=-MOVE_SPEED;else if(keys.right)ball.vx=MOVE_SPEED;else ball.vx*=0.9;
+      ball.x+=ball.vx;ball.vy+=GRAVITY;ball.y+=ball.vy;
+
+      if(ball.x+ball.radius<0)ball.x=canvas.width+ball.radius;
+      if(ball.x-ball.radius>canvas.width)ball.x=-ball.radius;
+
+      if(ball.y<canvas.height/2){
+        const shift=canvas.height/2-ball.y;
+        ball.y=canvas.height/2;
+        platforms.forEach(p=>{p.y+=shift;p.originY+=shift;});
+        score+=Math.floor(shift);
+        document.getElementById('score').textContent=score;
+      }
+
+      if(ball.vy>0){
+        platforms.forEach(p=>{
+          if(p.broken)return;
+          const withinX=ball.x+ball.radius>p.x&&ball.x-ball.radius<p.x+p.width;
+          const withinY=ball.y+ball.radius>=p.y&&ball.y+ball.radius<=p.y+p.height;
+          if(withinX&&withinY){ball.vy=JUMP_VELOCITY;if(p.type===PLATFORM_TYPES.BREAK)p.broken=true;}
+        });
+      }
+
+      for(let i=platforms.length-1;i>=0;i--){
+        const p=platforms[i];
+        p.x+=p.vx;p.y+=p.vy;
+        if(p.vx!==0){if(p.x<p.originX-p.rangeX||p.x>p.originX+p.rangeX){p.vx*=-1;p.x=clamp(p.x,p.originX-p.rangeX,p.originX+p.rangeX);} }
+        if(p.vy!==0){if(p.y<p.originY-p.rangeY||p.y>p.originY+p.rangeY){p.vy*=-1;p.y=clamp(p.y,p.originY-p.rangeY,p.originY+p.rangeY);} }
+
+        if(p.y>canvas.height+50){
+          platforms.splice(i,1);
+          const topPlat=platforms.reduce((m,pl)=>pl.y<m.y?pl:m,platforms[0]);
+          const newY=topPlat.y-randomRange(MIN_GAP_Y,MAX_GAP_Y);
+          const newPlat=createPlatform(newY,topPlat.x);
+          platforms.push(newPlat);
+        }
+      }
+
+      if(ball.y-ball.radius>canvas.height)endGame();
+    }
+
+    function draw(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      platforms.forEach(p=>{
+        if(p.broken)return;
+        switch(p.type){case PLATFORM_TYPES.BREAK:ctx.fillStyle='#d9534f';break;case PLATFORM_TYPES.MOVING:ctx.fillStyle='#5bc0de';break;default:ctx.fillStyle='#5cb85c';break;}
+        ctx.fillRect(p.x,p.y,p.width,p.height);
+      });
+      ctx.fillStyle='#f0ad4e';ctx.beginPath();ctx.arc(ball.x,ball.y,ball.radius,0,Math.PI*2);ctx.fill();
+    }
+
+    function loop(){if(gameOver)return;update();draw();requestAnimationFrame(loop);}
+
+    function endGame(){gameOver=true;document.getElementById('msg').textContent=`Game Over!\nScore: ${score}`;document.getElementById('overlay').style.visibility='visible';}
+
+    document.getElementById('restart').addEventListener('click',reset);
+  </script>
+</body>
+</html>
