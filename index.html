@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Platform Ball Game — V8</title>
+  <title>Platform Ball Game — V9 Enhanced</title>
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -35,6 +35,10 @@
       transform: translateX(-50%);
       font-size: 1.2rem;
       pointer-events: none;
+      z-index: 20;
+      display: flex;
+      gap: 20px;
+      color: #333;
     }
     #overlay, #startScreen {
       position: absolute;
@@ -45,7 +49,7 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      z-index: 10;
+      z-index: 30;
     }
     #overlay { visibility: hidden; }
     #overlay span, #startScreen span {
@@ -53,6 +57,7 @@
       margin-bottom: 1rem;
       color: white;
       text-align: center;
+      white-space: pre-line;
     }
     button {
       padding: 10px 24px;
@@ -78,6 +83,23 @@
       font-weight: bold;
       color: #ff4081;
       pointer-events: none;
+      z-index: 20;
+    }
+    #pauseBtn {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      z-index: 25;
+      padding: 8px 16px;
+      background: #ff4081;
+      border-radius: 6px;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #pauseBtn:hover {
+      opacity: 0.9;
     }
   </style>
 </head>
@@ -85,13 +107,17 @@
   <div id="wrapper">
     <div id="title">LOVE GAMING</div>
     <canvas id="game"></canvas>
-    <div id="hud">Score: <span id="score">0</span></div>
+    <div id="hud">
+      <div>Score: <span id="score">0</span></div>
+      <div>Power-up: <span id="powerup">None</span></div>
+    </div>
+    <button id="pauseBtn" style="display:none;">Pause</button>
     <div id="overlay">
       <span id="msg"></span>
       <button id="restart">Restart</button>
     </div>
     <div id="startScreen">
-      <span>Tap to Start</span>
+      <span>Tap or Press Start to Play</span>
       <button onclick="startGame()">Start Game</button>
     </div>
   </div>
@@ -99,6 +125,12 @@
   <script>
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const powerupEl = document.getElementById('powerup');
+    const overlay = document.getElementById('overlay');
+    const msg = document.getElementById('msg');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const startScreen = document.getElementById('startScreen');
 
     // Resize canvas to fit screen
     function resizeCanvas() {
@@ -113,23 +145,52 @@
     const PLATFORM_WIDTH = 80, PLATFORM_HEIGHT = 10;
     const MAX_GAP_X = 120, MIN_GAP_Y = 60, MAX_GAP_Y = 110;
     const PLATFORM_MOVE_RANGE_MIN = 30, PLATFORM_MOVE_RANGE_MAX = 80;
-    const PLATFORM_TYPES = { NORMAL: 'normal', MOVING: 'moving', BREAK: 'break' };
+    const PLATFORM_TYPES = {
+      NORMAL: 'normal',
+      MOVING: 'moving',
+      BREAK: 'break',
+      ROCKET: 'rocket',
+      SPIKE: 'spike'
+    };
+    const POWERUP_TYPES = { NONE: 'None', SPEED: 'Speed Boost', DOUBLE: 'Double Score', SHIELD: 'Shield' };
 
-    const keys = { left: false, right: false };
+    // Game state
     let ball, platforms, score, gameOver, gameStarted = false;
+    let keys = { left: false, right: false };
+    let powerup = POWERUP_TYPES.NONE;
+    let powerupTimer = 0;
+    let paused = false;
+    let difficultyMultiplier = 1;
 
+    // Sounds (basic beeps)
+    const beepJump = new AudioContext();
+    function playBeep(frequency = 440, duration = 100) {
+      const oscillator = beepJump.createOscillator();
+      const gainNode = beepJump.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(beepJump.destination);
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(frequency, beepJump.currentTime);
+      gainNode.gain.setValueAtTime(0.1, beepJump.currentTime);
+      oscillator.start();
+      oscillator.stop(beepJump.currentTime + duration / 1000);
+    }
+
+    // Input handlers
     document.addEventListener('keydown', e => {
-      if (e.key === 'ArrowLeft') keys.left = true;
-      if (e.key === 'ArrowRight') keys.right = true;
+      if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
+      if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
       if (e.key.toLowerCase() === 'r' && gameOver) reset();
+      if (e.key.toLowerCase() === 'p' && gameStarted) togglePause();
     });
     document.addEventListener('keyup', e => {
-      if (e.key === 'ArrowLeft') keys.left = false;
-      if (e.key === 'ArrowRight') keys.right = false;
+      if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+      if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
     });
 
     // Mobile touch control
     document.addEventListener('touchstart', e => {
+      if (!gameStarted) return;
       const touchX = e.touches[0].clientX;
       if (touchX < window.innerWidth / 2) {
         keys.left = true;
@@ -143,20 +204,96 @@
       keys.left = keys.right = false;
     });
 
+    pauseBtn.addEventListener('click', togglePause);
+
+    function togglePause() {
+      if (!gameStarted) return;
+      paused = !paused;
+      pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+      if (!paused) requestAnimationFrame(loop);
+    }
+
+    // Platform creation helpers
+    function createRigidPlatform(x, y) {
+      return {
+        x, y, width: PLATFORM_WIDTH, height: PLATFORM_HEIGHT,
+        vx: 0, vy: 0,
+        originX: x, originY: y,
+        rangeX: 0, rangeY: 0,
+        type: PLATFORM_TYPES.NORMAL,
+        broken: false
+      };
+    }
+
+    function createPlatform(y, prevX) {
+      const r = Math.random();
+      let type = PLATFORM_TYPES.NORMAL;
+      if (r < 0.55) type = PLATFORM_TYPES.MOVING;
+      else if (r < 0.75) type = PLATFORM_TYPES.BREAK;
+      else if (r < 0.85) type = PLATFORM_TYPES.ROCKET;
+      else type = PLATFORM_TYPES.SPIKE;
+
+      const minX = clamp(prevX - MAX_GAP_X, 0, canvas.width - PLATFORM_WIDTH);
+      const maxX = clamp(prevX + MAX_GAP_X, 0, canvas.width - PLATFORM_WIDTH);
+      const originX = randomRange(minX, maxX);
+
+      let vx = 0, vy = 0, rangeX = 0, rangeY = 0;
+      const originY = y;
+
+      if (type === PLATFORM_TYPES.MOVING) {
+        const horizontal = Math.random() < 0.5;
+        if (horizontal) {
+          rangeX = randomRange(PLATFORM_MOVE_RANGE_MIN, PLATFORM_MOVE_RANGE_MAX);
+          vx = randomRange(0.5, 2) * difficultyMultiplier;
+        } else {
+          rangeY = randomRange(PLATFORM_MOVE_RANGE_MIN, PLATFORM_MOVE_RANGE_MAX / 2);
+          vy = randomRange(0.5, 1.5) * difficultyMultiplier;
+        }
+      }
+
+      return { x: originX, y: originY, width: PLATFORM_WIDTH, height: PLATFORM_HEIGHT, vx, vy, originX, originY, rangeX, rangeY, type, broken: false };
+    }
+
+    // Powerup creation
+    function createPowerup(x, y) {
+      const types = [POWERUP_TYPES.SPEED, POWERUP_TYPES.DOUBLE, POWERUP_TYPES.SHIELD];
+      const type = types[Math.floor(Math.random() * types.length)];
+      return { x, y, radius: 10, type };
+    }
+
+    // Utility functions
+    function randomRange(min, max) { return Math.random() * (max - min) + min; }
+    function clamp(v, min, max) { return Math.max(min, Math.min(v, max)); }
+
+    // Initial powerups list
+    let powerups = [];
+
     function startGame() {
-      document.getElementById('startScreen').style.display = 'none';
+      startScreen.style.display = 'none';
+      pauseBtn.style.display = 'block';
       reset();
+      gameStarted = true;
     }
 
     function reset() {
       platforms = [];
+      powerups = [];
       score = 0;
-      document.getElementById('score').textContent = score;
+      powerup = POWERUP_TYPES.NONE;
+      powerupTimer = 0;
+      difficultyMultiplier = 1;
+      gameOver = false;
+      paused = false;
+      powerupEl.textContent = powerup;
+      pauseBtn.textContent = 'Pause';
+      scoreEl.textContent = score;
+      overlay.style.visibility = 'hidden';
 
       const startPlat = createRigidPlatform(canvas.width / 2 - PLATFORM_WIDTH / 2, canvas.height - 60);
       platforms.push(startPlat);
-      ball = { x: startPlat.x + PLATFORM_WIDTH / 2, y: startPlat.y - BALL_RADIUS, vx: 0, vy: 0, radius: BALL_RADIUS };
+      ball = { x: startPlat.x + PLATFORM_WIDTH / 2, y: startPlat.y - BALL_RADIUS, vx: 0, vy: 0, radius: BALL_RADIUS, shield: false };
 
+      // Generate initial platforms above
       let prevX = startPlat.x;
       let currentY = startPlat.y - randomRange(MIN_GAP_Y, MAX_GAP_Y);
       while (currentY > -canvas.height * 2) {
@@ -166,124 +303,292 @@
         currentY -= randomRange(MIN_GAP_Y, MAX_GAP_Y);
       }
 
-      gameOver = false;
-      document.getElementById('overlay').style.visibility = 'hidden';
+      // Generate initial powerup randomly on a platform
+      if (platforms.length > 3) {
+        const puPlatform = platforms[Math.floor(randomRange(3, platforms.length))];
+        powerups.push(createPowerup(puPlatform.x + PLATFORM_WIDTH / 2, puPlatform.y - 20));
+      }
+
       requestAnimationFrame(loop);
     }
 
-    function createRigidPlatform(x, y) {
-      return { x, y, width: PLATFORM_WIDTH, height: PLATFORM_HEIGHT, vx: 0, vy: 0, originX: x, originY: y, rangeX: 0, rangeY: 0, type: PLATFORM_TYPES.NORMAL, broken: false };
-    }
+    // Particle system for jump and game over effects
+    const particles = [];
 
-    function createPlatform(y, prevX) {
-      const r = Math.random();
-      let type = PLATFORM_TYPES.NORMAL;
-      if (r < 0.7) type = PLATFORM_TYPES.MOVING;
-      else if (r < 0.85) type = PLATFORM_TYPES.BREAK;
-
-      const minX = clamp(prevX - MAX_GAP_X, 0, canvas.width - PLATFORM_WIDTH);
-      const maxX = clamp(prevX + MAX_GAP_X, 0, canvas.width - PLATFORM_WIDTH);
-      const originX = randomRange(minX, maxX);
-
-      let vx = 0, vy = 0, rangeX = 0, rangeY = 0;
-      const originY = y;
-      if (type === PLATFORM_TYPES.MOVING) {
-        const horizontal = Math.random() < 0.5;
-        if (horizontal) {
-          rangeX = randomRange(PLATFORM_MOVE_RANGE_MIN, PLATFORM_MOVE_RANGE_MAX);
-          vx = randomRange(0.5, 2);
-        } else {
-          rangeY = randomRange(PLATFORM_MOVE_RANGE_MIN, PLATFORM_MOVE_RANGE_MAX / 2);
-          vy = randomRange(0.5, 1.5);
-        }
+    function createParticles(x, y, color, count = 15) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x, y,
+          vx: randomRange(-3, 3),
+          vy: randomRange(-3, 0),
+          alpha: 1,
+          radius: randomRange(1, 3),
+          color
+        });
       }
-
-      return { x: originX, y: originY, width: PLATFORM_WIDTH, height: PLATFORM_HEIGHT, vx, vy, originX, originY, rangeX, rangeY, type, broken: false };
     }
 
-    function randomRange(min, max) { return Math.random() * (max - min) + min; }
-    function clamp(v, min, max) { return Math.max(min, Math.min(v, max)); }
+    function updateParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.1;
+        p.alpha -= 0.02;
+        if (p.alpha <= 0) particles.splice(i, 1);
+      }
+    }
 
+    function drawParticles() {
+      particles.forEach(p => {
+        ctx.fillStyle = `rgba(${p.color}, ${p.alpha})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // Main update loop
     function update() {
-      const MOVE_SPEED = 6;
+      if (paused || gameOver) return;
+
+      // Increase difficulty slowly based on score
+      difficultyMultiplier = 1 + score / 5000;
+
+      const MOVE_SPEED_BASE = 6;
+      const MOVE_SPEED = powerup === POWERUP_TYPES.SPEED ? MOVE_SPEED_BASE * 1.8 : MOVE_SPEED_BASE;
+
+      // Horizontal movement
       if (keys.left) ball.vx = -MOVE_SPEED;
       else if (keys.right) ball.vx = MOVE_SPEED;
       else ball.vx *= 0.9;
 
       ball.x += ball.vx;
-      ball.vy += GRAVITY;
+      ball.vy += GRAVITY * difficultyMultiplier;
       ball.y += ball.vy;
 
+      // Screen wrap horizontally
       if (ball.x + ball.radius < 0) ball.x = canvas.width + ball.radius;
       if (ball.x - ball.radius > canvas.width) ball.x = -ball.radius;
 
+      // Scroll screen vertically when ball moves above half height
       if (ball.y < canvas.height / 2) {
         const shift = canvas.height / 2 - ball.y;
         ball.y = canvas.height / 2;
         platforms.forEach(p => { p.y += shift; p.originY += shift; });
-        score += Math.floor(shift);
-        document.getElementById('score').textContent = score;
+        powerups.forEach(pu => pu.y += shift);
+        score += Math.floor(shift * (powerup === POWERUP_TYPES.DOUBLE ? 2 : 1));
+        scoreEl.textContent = score;
       }
 
+      // Platform collisions
       if (ball.vy > 0) {
         platforms.forEach(p => {
           if (p.broken) return;
+
+          // Spike platform collision - instant death if no shield
+          if (p.type === PLATFORM_TYPES.SPIKE) {
+            const onSpike = ball.x + ball.radius > p.x && ball.x - ball.radius < p.x + p.width &&
+                            ball.y + ball.radius >= p.y && ball.y + ball.radius <= p.y + p.height;
+            if (onSpike) {
+              if (ball.shield) {
+                ball.shield = false;
+                powerup = POWERUP_TYPES.NONE;
+                powerupEl.textContent = powerup;
+              } else {
+                endGame();
+              }
+            }
+            return; // spikes do not act as platforms to jump
+          }
+
           const withinX = ball.x + ball.radius > p.x && ball.x - ball.radius < p.x + p.width;
           const withinY = ball.y + ball.radius >= p.y && ball.y + ball.radius <= p.y + p.height;
           if (withinX && withinY) {
-            ball.vy = JUMP_VELOCITY;
+            // Rocket platform boosts jump higher
+            if (p.type === PLATFORM_TYPES.ROCKET) {
+              ball.vy = JUMP_VELOCITY * 1.7;
+              createParticles(ball.x, ball.y + ball.radius, '255,165,0'); // orange particles
+              playBeep(880, 150);
+            } else {
+              ball.vy = JUMP_VELOCITY;
+              playBeep(440, 100);
+            }
+
             if (p.type === PLATFORM_TYPES.BREAK) p.broken = true;
+            else p.broken = false;
+
+            if (p.type === PLATFORM_TYPES.BREAK) {
+              createParticles(ball.x, p.y, '200,0,0'); // red break particles
+            } else {
+              createParticles(ball.x, ball.y + ball.radius, '0,150,255'); // blue jump particles
+            }
           }
         });
       }
 
-      for (let i = platforms.length - 1; i >= 0; i--) {
-        const p = platforms[i];
-        p.x += p.vx;
-        p.y += p.vy;
+      // Update moving platforms
+      platforms.forEach(p => {
+        if (p.type === PLATFORM_TYPES.MOVING) {
+          if (p.rangeX > 0) {
+            p.x += p.vx;
+            if (p.x > p.originX + p.rangeX || p.x < p.originX - p.rangeX) p.vx *= -1;
+          }
+          if (p.rangeY > 0) {
+            p.y += p.vy;
+            if (p.y > p.originY + p.rangeY || p.y < p.originY - p.rangeY) p.vy *= -1;
+          }
+        }
+      });
 
-        if (p.vx && (p.x < p.originX - p.rangeX || p.x > p.originX + p.rangeX)) p.vx *= -1;
-        if (p.vy && (p.y < p.originY - p.rangeY || p.y > p.originY + p.rangeY)) p.vy *= -1;
-
-        if (p.y > canvas.height + 50) {
-          platforms.splice(i, 1);
-          const topPlat = platforms.reduce((min, pl) => pl.y < min.y ? pl : min, platforms[0]);
-          const newY = topPlat.y - randomRange(MIN_GAP_Y, MAX_GAP_Y);
-          const newPlat = createPlatform(newY, topPlat.x);
-          platforms.push(newPlat);
+      // Update powerup timer
+      if (powerup !== POWERUP_TYPES.NONE) {
+        powerupTimer -= 1;
+        if (powerupTimer <= 0) {
+          powerup = POWERUP_TYPES.NONE;
+          powerupEl.textContent = powerup;
+          ball.shield = false;
         }
       }
 
+      // Check powerup pickups
+      for (let i = powerups.length - 1; i >= 0; i--) {
+        const pu = powerups[i];
+        const dist = Math.hypot(ball.x - pu.x, ball.y - pu.y);
+        if (dist < ball.radius + pu.radius) {
+          powerup = pu.type;
+          powerupTimer = 600; // ~10 seconds at 60fps
+          powerupEl.textContent = powerup;
+          if (powerup === POWERUP_TYPES.SHIELD) ball.shield = true;
+          powerups.splice(i, 1);
+          createParticles(pu.x, pu.y, '0,255,0', 30); // green particles
+          playBeep(660, 200);
+        }
+      }
+
+      // Remove broken platforms from array
+      platforms = platforms.filter(p => !p.broken || p.type !== PLATFORM_TYPES.BREAK);
+
+      // Remove platforms below screen
+      platforms = platforms.filter(p => p.y < canvas.height + 100);
+
+      // Add new platforms as needed
+      while (platforms.length < 10) {
+        const last = platforms[platforms.length - 1];
+        const newY = last.y - randomRange(MIN_GAP_Y, MAX_GAP_Y);
+        const newPlatform = createPlatform(newY, last.x);
+        platforms.push(newPlatform);
+
+        // Random chance to spawn powerup on new platform
+        if (Math.random() < 0.15) {
+          powerups.push(createPowerup(newPlatform.x + PLATFORM_WIDTH / 2, newPlatform.y - 20));
+        }
+      }
+
+      // Game over condition: ball falls below screen
       if (ball.y - ball.radius > canvas.height) endGame();
+
+      updateParticles();
     }
 
+    // Draw everything
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw platforms
       platforms.forEach(p => {
-        if (p.broken) return;
-        ctx.fillStyle = p.type === PLATFORM_TYPES.BREAK ? '#d9534f' : p.type === PLATFORM_TYPES.MOVING ? '#5bc0de' : '#5cb85c';
+        if (p.broken && p.type === PLATFORM_TYPES.BREAK) {
+          ctx.fillStyle = 'rgba(200,0,0,0.5)';
+        } else {
+          switch (p.type) {
+            case PLATFORM_TYPES.NORMAL: ctx.fillStyle = '#444'; break;
+            case PLATFORM_TYPES.MOVING: ctx.fillStyle = '#0099ff'; break;
+            case PLATFORM_TYPES.BREAK: ctx.fillStyle = '#ff4444'; break;
+            case PLATFORM_TYPES.ROCKET: ctx.fillStyle = '#ffaa00'; break;
+            case PLATFORM_TYPES.SPIKE: ctx.fillStyle = '#660000'; break;
+          }
+        }
         ctx.fillRect(p.x, p.y, p.width, p.height);
+
+        // Draw spikes
+        if (p.type === PLATFORM_TYPES.SPIKE) {
+          ctx.fillStyle = '#fff';
+          const spikeCount = 5;
+          const spikeWidth = p.width / spikeCount;
+          for (let i = 0; i < spikeCount; i++) {
+            ctx.beginPath();
+            ctx.moveTo(p.x + i * spikeWidth, p.y + p.height);
+            ctx.lineTo(p.x + i * spikeWidth + spikeWidth / 2, p.y + p.height - 15);
+            ctx.lineTo(p.x + (i + 1) * spikeWidth, p.y + p.height);
+            ctx.fill();
+          }
+        }
       });
-      ctx.fillStyle = '#f0ad4e';
+
+      // Draw powerups
+      powerups.forEach(pu => {
+        switch (pu.type) {
+          case POWERUP_TYPES.SPEED:
+            ctx.fillStyle = '#ff0'; // yellow
+            break;
+          case POWERUP_TYPES.DOUBLE:
+            ctx.fillStyle = '#0ff'; // cyan
+            break;
+          case POWERUP_TYPES.SHIELD:
+            ctx.fillStyle = '#0f0'; // green
+            break;
+        }
+        ctx.beginPath();
+        ctx.arc(pu.x, pu.y, pu.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#222';
+        ctx.stroke();
+      });
+
+      // Draw ball with shield effect if active
       ctx.beginPath();
+      ctx.fillStyle = '#ff4081';
       ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
       ctx.fill();
+
+      if (ball.shield) {
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius + 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+
+      drawParticles();
     }
 
+    // Game loop
     function loop() {
-      if (gameOver) return;
-      update();
-      draw();
-      requestAnimationFrame(loop);
+      if (!gameOver && !paused) {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+      }
     }
 
+    // End game logic
     function endGame() {
       gameOver = true;
-      document.getElementById('msg').textContent = `Game Over!\nScore: ${score}`;
-      document.getElementById('overlay').style.visibility = 'visible';
+      overlay.style.visibility = 'visible';
+      msg.textContent = `Game Over!\nYour score: ${score}`;
+      pauseBtn.style.display = 'none';
+      createParticles(ball.x, ball.y, '255,0,0', 50);
+      playBeep(220, 400);
     }
 
-    document.getElementById('restart').addEventListener('click', reset);
+    // Restart button
+    document.getElementById('restart').addEventListener('click', () => {
+      overlay.style.visibility = 'hidden';
+      pauseBtn.style.display = 'block';
+      reset();
+    });
+
   </script>
 </body>
 </html>
