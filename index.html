@@ -1,594 +1,678 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Platform Ball Game — V9 Enhanced</title>
-  <style>
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #111;
-      color: #eee;
-      font-family: Arial, Helvetica, sans-serif;
-      height: 100%;
-      overflow: hidden;
-      user-select: none;
-      touch-action: none;
-    }
-    #wrapper {
-      position: relative;
-      width: 100%;
-      height: 100%;
-    }
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      background: #fafafa;
-    }
-    #hud {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 1.2rem;
-      pointer-events: none;
-      z-index: 20;
-      display: flex;
-      gap: 20px;
-      color: #333;
-    }
-    #overlay, #startScreen {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.65);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      z-index: 30;
-    }
-    #overlay { visibility: hidden; }
-    #overlay span, #startScreen span {
-      font-size: 2rem;
-      margin-bottom: 1rem;
-      color: white;
-      text-align: center;
-      white-space: pre-line;
-    }
-    button {
-      padding: 10px 24px;
-      font-size: 1rem;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      background: #5cb85c;
-      color: #fff;
-      animation: pulse 1.5s infinite;
-    }
-    button:hover { opacity: .9; }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-    }
-    #title {
-      position: absolute;
-      top: 8px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 1.5rem;
-      font-weight: bold;
-      color: #ff4081;
-      pointer-events: none;
-      z-index: 20;
-    }
-    #pauseBtn {
-      position: absolute;
-      top: 10px;
-      right: 20px;
-      z-index: 25;
-      padding: 8px 16px;
-      background: #ff4081;
-      border-radius: 6px;
-      border: none;
-      color: white;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    #pauseBtn:hover {
-      opacity: 0.9;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dodge & Shoot Game</title>
+<style>
+  body, html {
+    margin:0; padding:0; overflow:hidden; background:#0a0a0a;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    user-select:none;
+  }
+  canvas {
+    display:block;
+    margin:0 auto;
+    background: linear-gradient(to top, #00111f, #003366);
+    box-shadow: 0 0 20px #004488aa;
+    border-radius: 8px;
+  }
+  #info {
+    color: white; text-align:center; margin:10px;
+    user-select:none;
+  }
+</style>
 </head>
 <body>
-  <div id="wrapper">
-    <div id="title">LOVE GAMING</div>
-    <canvas id="game"></canvas>
-    <div id="hud">
-      <div>Score: <span id="score">0</span></div>
-      <div>Power-up: <span id="powerup">None</span></div>
-    </div>
-    <button id="pauseBtn" style="display:none;">Pause</button>
-    <div id="overlay">
-      <span id="msg"></span>
-      <button id="restart">Restart</button>
-    </div>
-    <div id="startScreen">
-      <span>Tap or Press Start to Play</span>
-      <button onclick="startGame()">Start Game</button>
-    </div>
-  </div>
 
-  <script>
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
-    const powerupEl = document.getElementById('powerup');
-    const overlay = document.getElementById('overlay');
-    const msg = document.getElementById('msg');
-    const pauseBtn = document.getElementById('pauseBtn');
-    const startScreen = document.getElementById('startScreen');
+<canvas id="game"></canvas>
+<div id="info">Use arrow keys to move, Space to shoot rockets!</div>
 
-    // Resize canvas to fit screen
-    function resizeCanvas() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  const WIDTH = window.innerWidth < 600 ? window.innerWidth : 600;
+  const HEIGHT = window.innerHeight < 800 ? window.innerHeight : 800;
+  canvas.width = WIDTH;
+  canvas.height = HEIGHT;
+
+  // Game constants
+  const GRAVITY = 0.35;
+  const FRICTION = 0.98;
+
+  // Ball/player
+  const ball = {
+    x: WIDTH / 2,
+    y: HEIGHT - 100,
+    radius: 15,
+    vx: 0,
+    vy: 0,
+    speed: 6,
+    onPlatform: false,
+    shield: false,
+  };
+
+  // Platform types
+  const PLATFORM_TYPES = {
+    NORMAL: 'normal',
+    SPIKE: 'spike',
+    BREAK: 'break',
+    MOVING: 'moving',
+  };
+
+  const PLATFORM_WIDTH = 100;
+  const PLATFORM_HEIGHT = 15;
+  const MIN_GAP_Y = 70;
+  const MAX_GAP_Y = 130;
+
+  // Arrays
+  let platforms = [];
+  let enemies = [];
+  let rockets = [];
+  let particles = [];
+  let powerups = [];
+
+  // Powerup types
+  const POWERUP_TYPES = {
+    NONE: 0,
+    SHIELD: 1,
+  };
+
+  let powerup = POWERUP_TYPES.NONE;
+  let powerupTimer = 0;
+
+  let score = 0;
+  let gameOver = false;
+  let paused = false;
+
+  // Key input
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    // Shoot rocket on spacebar
+    if (e.code === 'Space' && !gameOver && !paused) {
+      shootRocket();
     }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+  });
+  window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-    // Game constants
-    const GRAVITY = 0.6, JUMP_VELOCITY = -12, BALL_RADIUS = 12;
-    const PLATFORM_WIDTH = 80, PLATFORM_HEIGHT = 10;
-    const MAX_GAP_X = 120, MIN_GAP_Y = 60, MAX_GAP_Y = 110;
-    const PLATFORM_MOVE_RANGE_MIN = 30, PLATFORM_MOVE_RANGE_MAX = 80;
-    const PLATFORM_TYPES = {
-      NORMAL: 'normal',
-      MOVING: 'moving',
-      BREAK: 'break',
-      ROCKET: 'rocket',
-      SPIKE: 'spike'
-    };
-    const POWERUP_TYPES = { NONE: 'None', SPEED: 'Speed Boost', DOUBLE: 'Double Score', SHIELD: 'Shield' };
+  // Utility
+  function randomRange(min, max) {
+    return Math.random() * (max - min) + min;
+  }
 
-    // Game state
-    let ball, platforms, score, gameOver, gameStarted = false;
-    let keys = { left: false, right: false };
-    let powerup = POWERUP_TYPES.NONE;
-    let powerupTimer = 0;
-    let paused = false;
-    let difficultyMultiplier = 1;
-
-    // Sounds (basic beeps)
-    const beepJump = new AudioContext();
-    function playBeep(frequency = 440, duration = 100) {
-      const oscillator = beepJump.createOscillator();
-      const gainNode = beepJump.createGain();
+  // Sound beep using Web Audio API
+  function playBeep(freq = 440, duration = 150) {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioContext();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
       oscillator.connect(gainNode);
-      gainNode.connect(beepJump.destination);
+      gainNode.connect(audioCtx.destination);
+      oscillator.frequency.value = freq;
       oscillator.type = 'square';
-      oscillator.frequency.setValueAtTime(frequency, beepJump.currentTime);
-      gainNode.gain.setValueAtTime(0.1, beepJump.currentTime);
       oscillator.start();
-      oscillator.stop(beepJump.currentTime + duration / 1000);
+      gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration / 1000);
+      oscillator.stop(audioCtx.currentTime + duration / 1000);
+      oscillator.onended = () => audioCtx.close();
+    } catch (e) {
+      // Ignore if not supported
     }
+  }
 
-    // Input handlers
-    document.addEventListener('keydown', e => {
-      if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
-      if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
-      if (e.key.toLowerCase() === 'r' && gameOver) reset();
-      if (e.key.toLowerCase() === 'p' && gameStarted) togglePause();
-    });
-    document.addEventListener('keyup', e => {
-      if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
-      if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
-    });
-
-    // Mobile touch control
-    document.addEventListener('touchstart', e => {
-      if (!gameStarted) return;
-      const touchX = e.touches[0].clientX;
-      if (touchX < window.innerWidth / 2) {
-        keys.left = true;
-        keys.right = false;
-      } else {
-        keys.right = true;
-        keys.left = false;
-      }
-    });
-    document.addEventListener('touchend', () => {
-      keys.left = keys.right = false;
-    });
-
-    pauseBtn.addEventListener('click', togglePause);
-
-    function togglePause() {
-      if (!gameStarted) return;
-      paused = !paused;
-      pauseBtn.textContent = paused ? 'Resume' : 'Pause';
-      if (!paused) requestAnimationFrame(loop);
-    }
-
-    // Platform creation helpers
-    function createRigidPlatform(x, y) {
-      return {
-        x, y, width: PLATFORM_WIDTH, height: PLATFORM_HEIGHT,
-        vx: 0, vy: 0,
-        originX: x, originY: y,
-        rangeX: 0, rangeY: 0,
-        type: PLATFORM_TYPES.NORMAL,
-        broken: false
-      };
-    }
-
-    function createPlatform(y, prevX) {
-      const r = Math.random();
-      let type = PLATFORM_TYPES.NORMAL;
-      if (r < 0.55) type = PLATFORM_TYPES.MOVING;
-      else if (r < 0.75) type = PLATFORM_TYPES.BREAK;
-      else if (r < 0.85) type = PLATFORM_TYPES.ROCKET;
-      else type = PLATFORM_TYPES.SPIKE;
-
-      const minX = clamp(prevX - MAX_GAP_X, 0, canvas.width - PLATFORM_WIDTH);
-      const maxX = clamp(prevX + MAX_GAP_X, 0, canvas.width - PLATFORM_WIDTH);
-      const originX = randomRange(minX, maxX);
-
-      let vx = 0, vy = 0, rangeX = 0, rangeY = 0;
-      const originY = y;
-
-      if (type === PLATFORM_TYPES.MOVING) {
-        const horizontal = Math.random() < 0.5;
-        if (horizontal) {
-          rangeX = randomRange(PLATFORM_MOVE_RANGE_MIN, PLATFORM_MOVE_RANGE_MAX);
-          vx = randomRange(0.5, 2) * difficultyMultiplier;
-        } else {
-          rangeY = randomRange(PLATFORM_MOVE_RANGE_MIN, PLATFORM_MOVE_RANGE_MAX / 2);
-          vy = randomRange(0.5, 1.5) * difficultyMultiplier;
-        }
-      }
-
-      return { x: originX, y: originY, width: PLATFORM_WIDTH, height: PLATFORM_HEIGHT, vx, vy, originX, originY, rangeX, rangeY, type, broken: false };
-    }
-
-    // Powerup creation
-    function createPowerup(x, y) {
-      const types = [POWERUP_TYPES.SPEED, POWERUP_TYPES.DOUBLE, POWERUP_TYPES.SHIELD];
-      const type = types[Math.floor(Math.random() * types.length)];
-      return { x, y, radius: 10, type };
-    }
-
-    // Utility functions
-    function randomRange(min, max) { return Math.random() * (max - min) + min; }
-    function clamp(v, min, max) { return Math.max(min, Math.min(v, max)); }
-
-    // Initial powerups list
-    let powerups = [];
-
-    function startGame() {
-      startScreen.style.display = 'none';
-      pauseBtn.style.display = 'block';
-      reset();
-      gameStarted = true;
-    }
-
-    function reset() {
-      platforms = [];
-      powerups = [];
-      score = 0;
-      powerup = POWERUP_TYPES.NONE;
-      powerupTimer = 0;
-      difficultyMultiplier = 1;
-      gameOver = false;
-      paused = false;
-      powerupEl.textContent = powerup;
-      pauseBtn.textContent = 'Pause';
-      scoreEl.textContent = score;
-      overlay.style.visibility = 'hidden';
-
-      const startPlat = createRigidPlatform(canvas.width / 2 - PLATFORM_WIDTH / 2, canvas.height - 60);
-      platforms.push(startPlat);
-      ball = { x: startPlat.x + PLATFORM_WIDTH / 2, y: startPlat.y - BALL_RADIUS, vx: 0, vy: 0, radius: BALL_RADIUS, shield: false };
-
-      // Generate initial platforms above
-      let prevX = startPlat.x;
-      let currentY = startPlat.y - randomRange(MIN_GAP_Y, MAX_GAP_Y);
-      while (currentY > -canvas.height * 2) {
-        const p = createPlatform(currentY, prevX);
-        platforms.push(p);
-        prevX = p.x;
-        currentY -= randomRange(MIN_GAP_Y, MAX_GAP_Y);
-      }
-
-      // Generate initial powerup randomly on a platform
-      if (platforms.length > 3) {
-        const puPlatform = platforms[Math.floor(randomRange(3, platforms.length))];
-        powerups.push(createPowerup(puPlatform.x + PLATFORM_WIDTH / 2, puPlatform.y - 20));
-      }
-
-      requestAnimationFrame(loop);
-    }
-
-    // Particle system for jump and game over effects
-    const particles = [];
-
-    function createParticles(x, y, color, count = 15) {
-      for (let i = 0; i < count; i++) {
-        particles.push({
-          x, y,
-          vx: randomRange(-3, 3),
-          vy: randomRange(-3, 0),
-          alpha: 1,
-          radius: randomRange(1, 3),
-          color
-        });
-      }
-    }
-
-    function updateParticles() {
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.1;
-        p.alpha -= 0.02;
-        if (p.alpha <= 0) particles.splice(i, 1);
-      }
-    }
-
-    function drawParticles() {
-      particles.forEach(p => {
-        ctx.fillStyle = `rgba(${p.color}, ${p.alpha})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fill();
+  // Particles for effects
+  function createParticles(x, y, color = '255,255,255', count = 20) {
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 6,
+        vy: (Math.random() - 0.5) * 6,
+        alpha: 1,
+        radius: randomRange(1, 3),
+        color,
       });
     }
+  }
 
-    // Main update loop
-    function update() {
-      if (paused || gameOver) return;
+  // Platforms initialization - start with floor platform
+  platforms.push({
+    x: WIDTH / 2 - PLATFORM_WIDTH / 2,
+    y: HEIGHT - 40,
+    width: PLATFORM_WIDTH,
+    height: PLATFORM_HEIGHT,
+    type: PLATFORM_TYPES.NORMAL,
+    broken: false,
+    originX: WIDTH / 2 - PLATFORM_WIDTH / 2,
+    originY: HEIGHT - 40,
+    vx: 0,
+    vy: 0,
+    rangeX: 0,
+    rangeY: 0,
+    hasEnemy: false,
+  });
 
-      // Increase difficulty slowly based on score
-      difficultyMultiplier = 1 + score / 5000;
+  // Create enemy on a platform
+  function createEnemy(platform) {
+    return {
+      x: platform.x + platform.width / 2 - 20,
+      y: platform.y - 20,
+      width: 40,
+      height: 20,
+      vx: 1.5 * (Math.random() < 0.5 ? 1 : -1),
+      platform,
+    };
+  }
 
-      const MOVE_SPEED_BASE = 6;
-      const MOVE_SPEED = powerup === POWERUP_TYPES.SPEED ? MOVE_SPEED_BASE * 1.8 : MOVE_SPEED_BASE;
+  // Create powerup
+  function createPowerup(x, y) {
+    return {
+      x,
+      y,
+      radius: 12,
+      type: POWERUP_TYPES.SHIELD,
+      angle: 0,
+    };
+  }
 
-      // Horizontal movement
-      if (keys.left) ball.vx = -MOVE_SPEED;
-      else if (keys.right) ball.vx = MOVE_SPEED;
-      else ball.vx *= 0.9;
+  // Shoot rocket from ball position
+  function shootRocket() {
+    rockets.push({
+      x: ball.x,
+      y: ball.y - ball.radius - 10,
+      radius: 6,
+      lifetime: 120,
+    });
+    playBeep(1200, 100);
+  }
 
-      ball.x += ball.vx;
-      ball.vy += GRAVITY * difficultyMultiplier;
-      ball.y += ball.vy;
-
-      // Screen wrap horizontally
-      if (ball.x + ball.radius < 0) ball.x = canvas.width + ball.radius;
-      if (ball.x - ball.radius > canvas.width) ball.x = -ball.radius;
-
-      // Scroll screen vertically when ball moves above half height
-      if (ball.y < canvas.height / 2) {
-        const shift = canvas.height / 2 - ball.y;
-        ball.y = canvas.height / 2;
-        platforms.forEach(p => { p.y += shift; p.originY += shift; });
-        powerups.forEach(pu => pu.y += shift);
-        score += Math.floor(shift * (powerup === POWERUP_TYPES.DOUBLE ? 2 : 1));
-        scoreEl.textContent = score;
-      }
-
-      // Platform collisions
-      if (ball.vy > 0) {
-        platforms.forEach(p => {
-          if (p.broken) return;
-
-          // Spike platform collision - instant death if no shield
-          if (p.type === PLATFORM_TYPES.SPIKE) {
-            const onSpike = ball.x + ball.radius > p.x && ball.x - ball.radius < p.x + p.width &&
-                            ball.y + ball.radius >= p.y && ball.y + ball.radius <= p.y + p.height;
-            if (onSpike) {
-              if (ball.shield) {
-                ball.shield = false;
-                powerup = POWERUP_TYPES.NONE;
-                powerupEl.textContent = powerup;
-              } else {
-                endGame();
-              }
-            }
-            return; // spikes do not act as platforms to jump
-          }
-
-          const withinX = ball.x + ball.radius > p.x && ball.x - ball.radius < p.x + p.width;
-          const withinY = ball.y + ball.radius >= p.y && ball.y + ball.radius <= p.y + p.height;
-          if (withinX && withinY) {
-            // Rocket platform boosts jump higher
-            if (p.type === PLATFORM_TYPES.ROCKET) {
-              ball.vy = JUMP_VELOCITY * 1.7;
-              createParticles(ball.x, ball.y + ball.radius, '255,165,0'); // orange particles
-              playBeep(880, 150);
-            } else {
-              ball.vy = JUMP_VELOCITY;
-              playBeep(440, 100);
-            }
-
-            if (p.type === PLATFORM_TYPES.BREAK) p.broken = true;
-            else p.broken = false;
-
-            if (p.type === PLATFORM_TYPES.BREAK) {
-              createParticles(ball.x, p.y, '200,0,0'); // red break particles
-            } else {
-              createParticles(ball.x, ball.y + ball.radius, '0,150,255'); // blue jump particles
-            }
-          }
-        });
-      }
-
-      // Update moving platforms
-      platforms.forEach(p => {
-        if (p.type === PLATFORM_TYPES.MOVING) {
-          if (p.rangeX > 0) {
-            p.x += p.vx;
-            if (p.x > p.originX + p.rangeX || p.x < p.originX - p.rangeX) p.vx *= -1;
-          }
-          if (p.rangeY > 0) {
-            p.y += p.vy;
-            if (p.y > p.originY + p.rangeY || p.y < p.originY - p.rangeY) p.vy *= -1;
-          }
-        }
-      });
-
-      // Update powerup timer
-      if (powerup !== POWERUP_TYPES.NONE) {
-        powerupTimer -= 1;
-        if (powerupTimer <= 0) {
-          powerup = POWERUP_TYPES.NONE;
-          powerupEl.textContent = powerup;
-          ball.shield = false;
-        }
-      }
-
-      // Check powerup pickups
-      for (let i = powerups.length - 1; i >= 0; i--) {
-        const pu = powerups[i];
-        const dist = Math.hypot(ball.x - pu.x, ball.y - pu.y);
-        if (dist < ball.radius + pu.radius) {
-          powerup = pu.type;
-          powerupTimer = 600; // ~10 seconds at 60fps
-          powerupEl.textContent = powerup;
-          if (powerup === POWERUP_TYPES.SHIELD) ball.shield = true;
-          powerups.splice(i, 1);
-          createParticles(pu.x, pu.y, '0,255,0', 30); // green particles
-          playBeep(660, 200);
-        }
-      }
-
-      // Remove broken platforms from array
-      platforms = platforms.filter(p => !p.broken || p.type !== PLATFORM_TYPES.BREAK);
-
-      // Remove platforms below screen
-      platforms = platforms.filter(p => p.y < canvas.height + 100);
-
-      // Add new platforms as needed
-      while (platforms.length < 10) {
-        const last = platforms[platforms.length - 1];
-        const newY = last.y - randomRange(MIN_GAP_Y, MAX_GAP_Y);
-        const newPlatform = createPlatform(newY, last.x);
-        platforms.push(newPlatform);
-
-        // Random chance to spawn powerup on new platform
-        if (Math.random() < 0.15) {
-          powerups.push(createPowerup(newPlatform.x + PLATFORM_WIDTH / 2, newPlatform.y - 20));
-        }
-      }
-
-      // Game over condition: ball falls below screen
-      if (ball.y - ball.radius > canvas.height) endGame();
-
-      updateParticles();
-    }
-
-    // Draw everything
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Draw platforms
-      platforms.forEach(p => {
-        if (p.broken && p.type === PLATFORM_TYPES.BREAK) {
-          ctx.fillStyle = 'rgba(200,0,0,0.5)';
-        } else {
-          switch (p.type) {
-            case PLATFORM_TYPES.NORMAL: ctx.fillStyle = '#444'; break;
-            case PLATFORM_TYPES.MOVING: ctx.fillStyle = '#0099ff'; break;
-            case PLATFORM_TYPES.BREAK: ctx.fillStyle = '#ff4444'; break;
-            case PLATFORM_TYPES.ROCKET: ctx.fillStyle = '#ffaa00'; break;
-            case PLATFORM_TYPES.SPIKE: ctx.fillStyle = '#660000'; break;
-          }
-        }
-        ctx.fillRect(p.x, p.y, p.width, p.height);
-
-        // Draw spikes
-        if (p.type === PLATFORM_TYPES.SPIKE) {
-          ctx.fillStyle = '#fff';
-          const spikeCount = 5;
-          const spikeWidth = p.width / spikeCount;
-          for (let i = 0; i < spikeCount; i++) {
-            ctx.beginPath();
-            ctx.moveTo(p.x + i * spikeWidth, p.y + p.height);
-            ctx.lineTo(p.x + i * spikeWidth + spikeWidth / 2, p.y + p.height - 15);
-            ctx.lineTo(p.x + (i + 1) * spikeWidth, p.y + p.height);
-            ctx.fill();
-          }
-        }
-      });
-
-      // Draw powerups
-      powerups.forEach(pu => {
-        switch (pu.type) {
-          case POWERUP_TYPES.SPEED:
-            ctx.fillStyle = '#ff0'; // yellow
-            break;
-          case POWERUP_TYPES.DOUBLE:
-            ctx.fillStyle = '#0ff'; // cyan
-            break;
-          case POWERUP_TYPES.SHIELD:
-            ctx.fillStyle = '#0f0'; // green
-            break;
-        }
-        ctx.beginPath();
-        ctx.arc(pu.x, pu.y, pu.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#222';
-        ctx.stroke();
-      });
-
-      // Draw ball with shield effect if active
-      ctx.beginPath();
-      ctx.fillStyle = '#ff4081';
-      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (ball.shield) {
-        ctx.strokeStyle = '#0f0';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.arc(ball.x, ball.y, ball.radius + 5, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.lineWidth = 1;
-      }
-
-      drawParticles();
-    }
-
-    // Game loop
-    function loop() {
-      if (!gameOver && !paused) {
-        update();
-        draw();
-        requestAnimationFrame(loop);
-      }
-    }
-
-    // End game logic
-    function endGame() {
+  // End game
+  function endGame() {
+    if (!gameOver) {
       gameOver = true;
-      overlay.style.visibility = 'visible';
-      msg.textContent = `Game Over!\nYour score: ${score}`;
-      pauseBtn.style.display = 'none';
-      createParticles(ball.x, ball.y, '255,0,0', 50);
-      playBeep(220, 400);
+      playBeep(200, 800);
+      alert(`Game Over! Your Score: ${score}`);
+      // Reload game after alert
+      window.location.reload();
+    }
+  }
+
+  // Update game state
+  function update() {
+    if (gameOver || paused) return;
+
+    // Move ball left/right
+    if (keys['ArrowLeft'] || keys['KeyA']) {
+      ball.vx = -ball.speed;
+    } else if (keys['ArrowRight'] || keys['KeyD']) {
+      ball.vx = ball.speed;
+    } else {
+      ball.vx *= FRICTION;
+      if (Math.abs(ball.vx) < 0.1) ball.vx = 0;
     }
 
-    // Restart button
-    document.getElementById('restart').addEventListener('click', () => {
-      overlay.style.visibility = 'hidden';
-      pauseBtn.style.display = 'block';
-      reset();
+    // Jump on up key if on platform
+    if ((keys['ArrowUp'] || keys['KeyW']) && ball.onPlatform) {
+      ball.vy = -10;
+      ball.onPlatform = false;
+      playBeep(600, 100);
+    }
+
+    ball.vy += GRAVITY;
+
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+
+    // Keep ball inside horizontal bounds
+    if (ball.x - ball.radius < 0) ball.x = ball.radius;
+    if (ball.x + ball.radius > WIDTH) ball.x = WIDTH - ball.radius;
+
+    // Prevent ball from falling below screen
+    if (ball.y - ball.radius > HEIGHT) {
+      endGame();
+    }
+
+    ball.onPlatform = false;
+
+    // Update platforms positions (moving platforms)
+    platforms.forEach(p => {
+      if (p.type === PLATFORM_TYPES.MOVING) {
+        p.x += p.vx;
+        if (p.x < p.originX - p.rangeX || p.x > p.originX + p.rangeX) {
+          p.vx *= -1;
+        }
+      }
     });
 
-  </script>
+    // Platform collisions
+    platforms.forEach(p => {
+      if (p.broken) return; // skip broken platforms
+
+      if (
+        ball.vy >= 0 && // falling or stationary vertically
+        ball.x + ball.radius > p.x &&
+        ball.x - ball.radius < p.x + p.width &&
+        ball.y + ball.radius > p.y &&
+        ball.y + ball.radius < p.y + p.height + ball.vy
+      ) {
+        if (p.type === PLATFORM_TYPES.SPIKE) {
+          // Spike platform - game over on contact
+          endGame();
+        } else if (p.type === PLATFORM_TYPES.BREAK) {
+          // Break platform breaks on contact
+          p.broken = true;
+          playBeep(700, 150);
+          createParticles(p.x + p.width / 2, p.y, '255,0,0', 40);
+          ball.vy = -8; // bounce up a bit
+        } else {
+          // Normal or moving platform, ball stands on it
+          ball.y = p.y - ball.radius;
+          ball.vy = 0;
+          ball.onPlatform = true;
+        }
+      }
+    });
+
+    // Update rockets
+    for (let i = rockets.length - 1; i >= 0; i--) {
+      let r = rockets[i];
+      r.y -= 8;
+      r.lifetime--;
+      if (r.lifetime <= 0 || r.y + r.radius < 0) {
+        rockets.splice(i, 1);
+        continue;
+      }
+
+      // Check collision with enemies
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        let e = enemies[j];
+        if (
+          r.x > e.x && r.x < e.x + e.width &&
+          r.y > e.y && r.y < e.y + e.height
+        ) {
+          enemies.splice(j, 1);
+          rockets.splice(i, 1);
+          createParticles(r.x, r.y, '255,100,0', 25);
+          playBeep(1000, 100);
+          score += 10;
+          break;
+        }
+      }
+
+      // Check collision with break platforms - break on rocket hit
+      for (let k = 0; k < platforms.length; k++) {
+        let p = platforms[k];
+        if (p.type === PLATFORM_TYPES.BREAK && !p.broken) {
+          if (
+            r.x > p.x && r.x < p.x + p.width &&
+            r.y > p.y && r.y < p.y + p.height
+          ) {
+            p.broken = true;
+            rockets.splice(i, 1);
+            createParticles(r.x, r.y, '200,0,0', 30);
+            playBeep(700, 200);
+            score += 5;
+            break;
+          }
+        }
+      }
+    }
+
+    // Update enemies
+    enemies.forEach(e => {
+      e.x += e.vx;
+      if (e.x < e.platform.x) {
+        e.x = e.platform.x;
+        e.vx *= -1;
+      }
+      if (e.x + e.width > e.platform.x + e.platform.width) {
+        e.x = e.platform.x + e.platform.width - e.width;
+        e.vx *= -1;
+      }
+    });
+
+    // Check collision between ball and enemies
+    enemies.forEach(e => {
+      if (
+        ball.x + ball.radius > e.x &&
+        ball.x - ball.radius < e.x + e.width &&
+        ball.y + ball.radius > e.y &&
+        ball.y - ball.radius < e.y + e.height
+      ) {
+        if (ball.shield) {
+          ball.shield = false;
+          powerup = POWERUP_TYPES.NONE;
+          powerupTimer = 0;
+          playBeep(400, 300);
+          createParticles(ball.x, ball.y, '0,255,0', 40);
+        } else {
+          endGame();
+        }
+      }
+    });
+
+    // Update powerups rotation
+    powerups.forEach(p => {
+      p.angle += 0.07;
+    });
+
+    // Check powerup collection
+    for (let i = powerups.length - 1; i >= 0; i--) {
+      let p = powerups[i];
+      const dx = ball.x - p.x;
+      const dy = ball.y - p.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < ball.radius + p.radius) {
+        if (p.type === POWERUP_TYPES.SHIELD) {
+          ball.shield = true;
+          powerup = POWERUP_TYPES.SHIELD;
+          powerupTimer = 600; // last for ~10 seconds @60fps
+          playBeep(900, 150);
+          createParticles(ball.x, ball.y, '0,255,0', 50);
+        }
+        powerups.splice(i, 1);
+      }
+    }
+
+    // Powerup timer countdown
+    if (powerup !== POWERUP_TYPES.NONE) {
+      powerupTimer--;
+      if (powerupTimer <= 0) {
+        powerup = POWERUP_TYPES.NONE;
+        ball.shield = false;
+      }
+    }
+
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      let p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.1; // gravity effect on particles
+      p.alpha -= 0.02;
+      if (p.alpha <= 0) particles.splice(i, 1);
+    }
+
+    // Scroll platforms down as ball moves up beyond half screen
+    if (ball.y < HEIGHT / 2) {
+      let dy = (HEIGHT / 2) - ball.y;
+      ball.y = HEIGHT / 2;
+
+      platforms.forEach(p => {
+        p.y += dy;
+      });
+      enemies.forEach(e => {
+        e.y += dy;
+        e.platform.y += dy;
+      });
+      powerups.forEach(p => {
+        p.y += dy;
+      });
+      particles.forEach(p => {
+        p.y += dy;
+      });
+
+      score += Math.floor(dy);
+    }
+
+    // Remove platforms below screen
+    platforms = platforms.filter(p => p.y < HEIGHT + 50 && !p.broken);
+
+    // Remove enemies on removed platforms
+    enemies = enemies.filter(e => e.platform.y < HEIGHT + 50);
+
+    // Remove powerups below screen
+    powerups = powerups.filter(p => p.y < HEIGHT + 50);
+
+    // Generate new platforms
+    while (platforms.length < 10) {
+      const last = platforms[platforms.length - 1];
+      let newY = last.y - randomRange(MIN_GAP_Y, MAX_GAP_Y);
+
+      // Ensure next platform is reachable, add normal platform next to spike platforms
+      let safeX = randomRange(50, WIDTH - PLATFORM_WIDTH - 50);
+
+      // 70% normal, 20% moving, 10% spike or break platform
+      let typeChance = Math.random();
+      let pType;
+      if (typeChance < 0.7) pType = PLATFORM_TYPES.NORMAL;
+      else if (typeChance < 0.9) pType = PLATFORM_TYPES.MOVING;
+      else pType = Math.random() < 0.5 ? PLATFORM_TYPES.SPIKE : PLATFORM_TYPES.BREAK;
+
+      let newPlatform = {
+        x: safeX,
+        y: newY,
+        width: PLATFORM_WIDTH,
+        height: PLATFORM_HEIGHT,
+        type: pType,
+        broken: false,
+        originX: safeX,
+        originY: newY,
+        vx: pType === PLATFORM_TYPES.MOVING ? 1.5 * (Math.random() < 0.5 ? 1 : -1) : 0,
+        vy: 0,
+        rangeX: pType === PLATFORM_TYPES.MOVING ? 50 : 0,
+        rangeY: 0,
+        hasEnemy: false,
+      };
+
+      platforms.push(newPlatform);
+
+      if (pType === PLATFORM_TYPES.SPIKE) {
+        // Add adjacent safe platform for path
+        let adjX = newPlatform.x + PLATFORM_WIDTH + 30;
+        if (adjX + PLATFORM_WIDTH < WIDTH) {
+          platforms.push({
+            x: adjX,
+            y: newY,
+            width: PLATFORM_WIDTH,
+            height: PLATFORM_HEIGHT,
+            type: PLATFORM_TYPES.NORMAL,
+            broken: false,
+            originX: adjX,
+            originY: newY,
+            vx: 0,
+            vy: 0,
+            rangeX: 0,
+            rangeY: 0,
+            hasEnemy: false,
+          });
+        }
+      }
+
+      // Spawn enemy on some safe platforms
+      if (pType !== PLATFORM_TYPES.SPIKE && pType !== PLATFORM_TYPES.BREAK && Math.random() < 0.2) {
+        enemies.push(createEnemy(newPlatform));
+        newPlatform.hasEnemy = true;
+      }
+
+      // Spawn powerups on some platforms without enemies
+      if (!newPlatform.hasEnemy && Math.random() < 0.15) {
+        powerups.push(createPowerup(newPlatform.x + PLATFORM_WIDTH / 2, newPlatform.y - 20));
+      }
+    }
+  }
+
+  // Draw the entire game scene
+  function draw() {
+    // Clear background
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+    // Background gradient
+    let bgGradient = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+    bgGradient.addColorStop(0, '#002244');
+    bgGradient.addColorStop(1, '#000010');
+    ctx.fillStyle = bgGradient;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Draw platforms
+    platforms.forEach(p => {
+      if (p.broken) return;
+
+      if (p.type === PLATFORM_TYPES.NORMAL) {
+        ctx.fillStyle = '#3a8ddb';
+        ctx.shadowColor = '#2f70cc';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(p.x, p.y, p.width, p.height);
+      } else if (p.type === PLATFORM_TYPES.SPIKE) {
+        // Spike platform
+        ctx.fillStyle = '#8b0000';
+        ctx.shadowColor = '#ff0000';
+        ctx.shadowBlur = 15;
+        ctx.fillRect(p.x, p.y, p.width, p.height);
+        // Draw spikes
+        let spikeCount = 5;
+        let spikeWidth = p.width / spikeCount;
+        ctx.fillStyle = '#ff4444';
+        for (let i = 0; i < spikeCount; i++) {
+          ctx.beginPath();
+          ctx.moveTo(p.x + i * spikeWidth, p.y + p.height);
+          ctx.lineTo(p.x + i * spikeWidth + spikeWidth / 2, p.y);
+          ctx.lineTo(p.x + (i + 1) * spikeWidth, p.y + p.height);
+          ctx.closePath();
+          ctx.fill();
+        }
+      } else if (p.type === PLATFORM_TYPES.BREAK) {
+        ctx.fillStyle = '#aa7722';
+        ctx.shadowColor = '#ffaa00';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(p.x, p.y, p.width, p.height);
+        // Cracks
+        ctx.strokeStyle = '#553300';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x + p.width / 4, p.y + p.height / 4);
+        ctx.lineTo(p.x + 3 * p.width / 4, p.y + 3 * p.height / 4);
+        ctx.moveTo(p.x + 3 * p.width / 4, p.y + p.height / 4);
+        ctx.lineTo(p.x + p.width / 4, p.y + 3 * p.height / 4);
+        ctx.stroke();
+      } else if (p.type === PLATFORM_TYPES.MOVING) {
+        ctx.fillStyle = '#44aa44';
+        ctx.shadowColor = '#22cc22';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(p.x, p.y, p.width, p.height);
+      }
+      ctx.shadowBlur = 0;
+    });
+
+    // Draw enemies
+    enemies.forEach(e => {
+      // Enemy body
+      ctx.fillStyle = '#ff5555';
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 8;
+      ctx.fillRect(e.x, e.y, e.width, e.height);
+      // Eyes
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.ellipse(e.x + e.width / 4, e.y + e.height / 2, 6, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(e.x + (3 * e.width) / 4, e.y + e.height / 2, 6, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // Pupils
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.ellipse(e.x + e.width / 4, e.y + e.height / 2, 3, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(e.x + (3 * e.width) / 4, e.y + e.height / 2, 3, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Draw powerups
+    powerups.forEach(p => {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle);
+      ctx.fillStyle = '#00ff00';
+      ctx.shadowColor = '#00ff00';
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      ctx.moveTo(0, -p.radius);
+      for (let i = 1; i < 6; i++) {
+        let angle = i * (Math.PI * 2 / 5);
+        let r = i % 2 === 0 ? p.radius : p.radius / 2;
+        ctx.lineTo(r * Math.sin(angle), -r * Math.cos(angle));
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    });
+
+    // Draw rockets
+    rockets.forEach(r => {
+      ctx.fillStyle = '#ffaa00';
+      ctx.shadowColor = '#ffaa00';
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      ctx.ellipse(r.x, r.y, r.radius / 2, r.radius * 1.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Flame
+      ctx.fillStyle = '#ff3300';
+      ctx.beginPath();
+      ctx.moveTo(r.x, r.y + r.radius * 1.5);
+      ctx.lineTo(r.x - r.radius / 2, r.y + r.radius * 2);
+      ctx.lineTo(r.x + r.radius / 2, r.y + r.radius * 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+
+    // Draw ball/player
+    ctx.fillStyle = ball.shield ? '#00ffdd' : '#0099ff';
+    ctx.shadowColor = ball.shield ? '#00ffee' : '#0066cc';
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Draw shield ring if active
+    if (ball.shield) {
+      ctx.strokeStyle = '#00ffee';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius + 6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Draw particles
+    particles.forEach(p => {
+      ctx.fillStyle = `rgba(${p.color},${p.alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Draw score
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
+    ctx.fillText(`Score: ${score}`, 20, 30);
+
+    // Instructions
+    if (gameOver) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, HEIGHT / 2 - 40, WIDTH, 80);
+      ctx.fillStyle = 'white';
+      ctx.font = '40px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Game Over', WIDTH / 2, HEIGHT / 2);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  // Main loop
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+})();
+</script>
+
 </body>
 </html>
