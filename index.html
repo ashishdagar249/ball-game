@@ -49,7 +49,7 @@
     radius: 15,
     vx: 0,
     vy: 0,
-    speed: 6,
+    speed: 6, //6
     onPlatform: false,
     shield: false,
     scaleY: 1,
@@ -65,8 +65,8 @@
 
   const PLATFORM_WIDTH = 100;
   const PLATFORM_HEIGHT = 15;
-  const MIN_GAP_Y = 70;
-  const MAX_GAP_Y = 130;
+  const MIN_GAP_Y = 60;   // adagar 70
+  const MAX_GAP_Y = 70;    // adagar 130
 
   // Arrays
   let platforms = [];
@@ -268,14 +268,25 @@
         ball.y + ball.radius < p.y + p.height + ball.vy
       ) {
         if (p.type === PLATFORM_TYPES.SPIKE) {
+            if(ball.shield){
+                ball.shield =false
+                ball.y = p.y - ball.radius;
+                ball.vy = -14; // Stronger bounce
+                ball.scaleY = 0.8; // Squeeze effect
+                ball.onPlatform = false; // Reset to prevent double bounce
+                playBeep(600, 100); // Optional: bounce sound
+            }
+            else{
+                endGame();
+            }
           // Spike platform - game over on contact
-          endGame();
+         // endGame();
         } else if (p.type === PLATFORM_TYPES.BREAK) {
           // Break platform breaks on contact
           p.broken = true;
           playBeep(700, 150);
           createParticles(p.x + p.width / 2, p.y, '255,0,0', 40);
-          ball.vy = -8; // bounce up a bit
+          ball.vy = -14; // bounce up a bit // adagar -8
         } else {
           // Normal or moving platform, ball stands on it
           ball.y = p.y - ball.radius;
@@ -355,7 +366,7 @@
         ball.y - ball.radius < e.y + e.height
       ) {
         if (ball.shield) {
-          ball.shield = false;
+          //ball.shield = false;
           powerup = POWERUP_TYPES.NONE;
           powerupTimer = 0;
           playBeep(400, 300);
@@ -381,7 +392,7 @@
         if (p.type === POWERUP_TYPES.SHIELD) {
           ball.shield = true;
           powerup = POWERUP_TYPES.SHIELD;
-          powerupTimer = 600; // last for ~10 seconds @60fps
+          powerupTimer = 200; // last for ~10 seconds @60fps //adagar 600
           playBeep(900, 150);
           createParticles(ball.x, ball.y, '0,255,0', 50);
         }
@@ -434,13 +445,13 @@
     platforms = platforms.filter(p => p.y < HEIGHT + 50 && !p.broken);
 
     // Remove enemies on removed platforms
-    enemies = enemies.filter(e => e.platform.y < HEIGHT + 50);
+    // enemies = enemies.filter(e => e.platform.y < HEIGHT + 50);
 
     // Remove powerups below screen
     powerups = powerups.filter(p => p.y < HEIGHT + 50);
 
     // Generate new platforms
-    while (platforms.length < 10) {
+    while (platforms.length < 20) {  //  <10
       const last = platforms[platforms.length - 1];
       let newY = last.y - randomRange(MIN_GAP_Y, MAX_GAP_Y);
 
@@ -668,7 +679,7 @@
     });
 
     // Draw score
-    ctx.fillStyle = 'red';
+    ctx.fillStyle = 'orange';
     ctx.font = '20px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
     ctx.fillText(`Score: ${score}`, 20, 30);
 
