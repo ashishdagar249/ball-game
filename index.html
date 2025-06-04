@@ -52,6 +52,7 @@
     speed: 6,
     onPlatform: false,
     shield: false,
+    scaleY: 1,
   };
 
   // Platform types
@@ -211,15 +212,22 @@
     } else if (keys['ArrowRight'] || keys['KeyD']) {
       ball.vx = ball.speed;
     } else {
-      ball.vx *= FRICTION;
-      if (Math.abs(ball.vx) < 0.1) ball.vx = 0;
+    //   ball.vx *= FRICTION;
+    //   if (Math.abs(ball.vx) < 0.1) ball.vx = 0;
+      ball.vx = 0;
     }
 
     // Jump on up key if on platform
-    if ((keys['ArrowUp'] || keys['KeyW']) && ball.onPlatform) {
-      ball.vy = -10;
-      ball.onPlatform = false;
-      playBeep(600, 100);
+    // if ((keys['ArrowUp'] || keys['KeyW']) && ball.onPlatform) {
+    //   ball.vy = -10;
+    //   ball.onPlatform = false;
+    //   playBeep(600, 100);
+    // }
+    if (ball.onPlatform) {
+     ball.vy = -14; // auto bounce
+     ball.scaleY = 0.8; // compress on bounce
+     ball.onPlatform = false;
+     playBeep(600, 100);
     }
 
     ball.vy += GRAVITY;
@@ -271,8 +279,11 @@
         } else {
           // Normal or moving platform, ball stands on it
           ball.y = p.y - ball.radius;
-          ball.vy = 0;
-          ball.onPlatform = true;
+          ball.vy = -14; // Stronger bounce
+          ball.scaleY = 0.8; // Squeeze effect
+          ball.onPlatform = false; // Reset to prevent double bounce
+          playBeep(600, 100); // Optional: bounce sound
+
         }
       }
     });
@@ -494,6 +505,12 @@
         powerups.push(createPowerup(newPlatform.x + PLATFORM_WIDTH / 2, newPlatform.y - 20));
       }
     }
+    if (ball.scaleY < 1) {
+     ball.scaleY += 0.05;
+     if (ball.scaleY > 1) ball.scaleY = 1;
+    }
+
+
   }
 
   // Draw the entire game scene
@@ -624,9 +641,13 @@
     ctx.fillStyle = ball.shield ? '#00ffdd' : '#0099ff';
     ctx.shadowColor = ball.shield ? '#00ffee' : '#0066cc';
     ctx.shadowBlur = 20;
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+    ctx.scale(1, ball.scaleY);
     ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, ball.radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
     ctx.shadowBlur = 0;
 
     // Draw shield ring if active
@@ -647,7 +668,7 @@
     });
 
     // Draw score
-    ctx.fillStyle = 'white';
+    ctx.fillStyle = 'red';
     ctx.font = '20px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
     ctx.fillText(`Score: ${score}`, 20, 30);
 
