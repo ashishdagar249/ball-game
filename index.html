@@ -26,7 +26,7 @@
 <body>
 
 <canvas id="game"></canvas>
-<div id="info">Use arrow keys to move, Space to shoot rockets!</div>
+<div id="info">Touch left/right to move, tap top to shoot!</div>
 
 <script>
 (() => {
@@ -701,6 +701,23 @@
     draw();
     requestAnimationFrame(loop);
   }
+
+  
+    let touchX = null;
+    canvas.addEventListener('touchstart', e => {
+      touchX = e.touches[0].clientX;
+      if (touchX < canvas.width / 3) {
+        keys['ArrowLeft'] = true;
+      } else if (touchX > canvas.width * 2 / 3) {
+        keys['ArrowRight'] = true;
+      } else {
+        shootRocket();
+      }
+    });
+    canvas.addEventListener('touchend', () => {
+      keys['ArrowLeft'] = false;
+      keys['ArrowRight'] = false;
+    });
 
   loop();
 })();
