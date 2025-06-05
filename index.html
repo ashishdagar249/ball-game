@@ -703,26 +703,28 @@
   }
 
   
-  // Touch controls for mobile
-  let touchX = null;
-  canvas.addEventListener('touchstart', e => {
-    e.preventDefault();
-    if (e.touches.length > 0) {
-      touchX = e.touches[0].clientX;
-      if (touchX < canvas.width / 3) {
-        keys['ArrowLeft'] = true;
-      } else if (touchX > canvas.width * 2 / 3) {
-        keys['ArrowRight'] = true;
-      } else {
-        shootRocket();
+  // Add touch controls only if device supports touch
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+    let touchX = null;
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (e.touches.length > 0) {
+        touchX = e.touches[0].clientX;
+        if (touchX < canvas.width / 3) {
+          keys['ArrowLeft'] = true;
+        } else if (touchX > canvas.width * 2 / 3) {
+          keys['ArrowRight'] = true;
+        } else {
+          shootRocket();
+        }
       }
-    }
-  }, { passive: false });
+    }, { passive: false });
 
-  canvas.addEventListener('touchend', () => {
-    keys['ArrowLeft'] = false;
-    keys['ArrowRight'] = false;
-  });
+    canvas.addEventListener('touchend', () => {
+      keys['ArrowLeft'] = false;
+      keys['ArrowRight'] = false;
+    });
+  }
 
   loop();
 })();
