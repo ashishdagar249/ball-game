@@ -185,7 +185,7 @@
     rockets.push({
       x: ball.x,
       y: ball.y - ball.radius - 10,
-      radius: 6,
+      radius: 26,  //dagar 6
       lifetime: 120,
     });
     playBeep(1200, 100);
@@ -224,7 +224,7 @@
     //   playBeep(600, 100);
     // }
     if (ball.onPlatform) {
-     ball.vy = -14; // auto bounce
+     ball.vy = -10; // auto bounce 
      ball.scaleY = 0.8; // compress on bounce
      ball.onPlatform = false;
      playBeep(600, 100);
@@ -271,7 +271,7 @@
             if(ball.shield){
                 ball.shield =false
                 ball.y = p.y - ball.radius;
-                ball.vy = -14; // Stronger bounce
+                ball.vy = -10; // Stronger bounce
                 ball.scaleY = 0.8; // Squeeze effect
                 ball.onPlatform = false; // Reset to prevent double bounce
                 playBeep(600, 100); // Optional: bounce sound
@@ -290,7 +290,7 @@
         } else {
           // Normal or moving platform, ball stands on it
           ball.y = p.y - ball.radius;
-          ball.vy = -14; // Stronger bounce
+          ball.vy = -10; // Stronger bounce
           ball.scaleY = 0.8; // Squeeze effect
           ball.onPlatform = false; // Reset to prevent double bounce
           playBeep(600, 100); // Optional: bounce sound
