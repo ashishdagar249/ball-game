@@ -68,6 +68,10 @@
   const MIN_GAP_Y = 60;   // adagar 70
   const MAX_GAP_Y = 70;    // adagar 130
 
+  let enemyRockets = [];
+  let boosterCount = 0;
+  let usedBooster = false;
+
   // Arrays
   let platforms = [];
   let enemies = [];
@@ -377,6 +381,54 @@
       }
     });
 
+    //
+    // Enemy shooting logic
+if (Math.random() < 0.01) {
+  enemies.forEach(e => {
+    enemyRockets.push({
+      x: e.x + e.width / 2,
+      y: e.y + e.height,
+      radius: 5,
+      speed: 4,
+    });
+  });
+}
+
+// Update enemy rockets
+for (let i = enemyRockets.length - 1; i >= 0; i--) {
+  let r = enemyRockets[i];
+  r.y += r.speed;
+  if (r.y - r.radius > HEIGHT) {
+    enemyRockets.splice(i, 1);
+    continue;
+  }
+
+  const dx = r.x - ball.x;
+  const dy = r.y - ball.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < r.radius + ball.radius) {
+    if (ball.shield) {
+      ball.shield = false;
+    } else {
+      endGame();
+    }
+    enemyRockets.splice(i, 1);
+  }
+}
+
+// BOOSTER JUMP
+if ((keys['ArrowUp'] || keys['KeyW']) && boosterCount > 0 && !usedBooster) {
+  ball.vy = -20;
+  boosterCount--;
+  usedBooster = true;
+  playBeep(1200, 200);
+}
+if (!keys['ArrowUp'] && !keys['KeyW']) {
+  usedBooster = false;
+}
+
+    //
+
     // Update powerups rotation
     powerups.forEach(p => {
       p.angle += 0.07;
@@ -395,6 +447,11 @@
           powerupTimer = 200; // last for ~10 seconds @60fps //adagar 600
           playBeep(900, 150);
           createParticles(ball.x, ball.y, '0,255,0', 50);
+        }
+        if (p.type === 'booster') {
+          boosterCount++;
+          createParticles(ball.x, ball.y, '255,255,0', 40);
+          playBeep(1000, 200);
         }
         powerups.splice(i, 1);
       }
@@ -482,6 +539,18 @@
       };
 
       platforms.push(newPlatform);
+
+      // Booster spawn (10% chance if no enemy on platform)
+      if (!newPlatform.hasEnemy && Math.random() < 0.1) {
+        powerups.push({
+          x: newPlatform.x + PLATFORM_WIDTH / 2,
+          y: newPlatform.y - 20,
+          radius: 12,
+          type: 'booster',
+          angle: 0,
+        });
+      }
+
 
       if (pType === PLATFORM_TYPES.SPIKE) {
         // Add adjacent safe platform for path
@@ -586,6 +655,18 @@
       ctx.shadowBlur = 0;
     });
 
+    // Draw enemy rockets
+  enemyRockets.forEach(r => {
+    ctx.fillStyle = '#ff0000';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+
+
     // Draw enemies
     enemies.forEach(e => {
       // Enemy body
@@ -613,8 +694,14 @@
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.angle);
-      ctx.fillStyle = '#00ff00';
-      ctx.shadowColor = '#00ff00';
+
+      if (p.type === POWERUP_TYPES.SHIELD) {
+        ctx.fillStyle = '#00ff00';
+        ctx.shadowColor = '#00ff00';
+      } else if (p.type === 'booster') {
+        ctx.fillStyle = '#ffff00';
+        ctx.shadowColor = '#ffff00';
+      }
       ctx.shadowBlur = 15;
       ctx.beginPath();
       ctx.moveTo(0, -p.radius);
