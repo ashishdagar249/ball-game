@@ -21,6 +21,33 @@
     color: white; text-align:center; margin:10px;
     user-select:none;
   }
+  #mobileControls {
+  position: fixed;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  padding: 0 10px;
+  z-index: 1000;
+}
+
+#mobileControls button {
+  font-size: 28px;
+  padding: 16px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 10px rgba(255,255,255,0.5);
+}
+
+@media (min-width: 768px) {
+  #mobileControls {
+    display: none;
+  }
+}
+
+
 </style>
 </head>
 <body>
@@ -28,6 +55,28 @@
 <canvas id="game"></canvas>
 <div id="info">Use arrow keys or tap screen to move and shoot.</div>
 
+<button id="useBooster" style="
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 18px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: none;
+  background: gold;
+  color: black;
+  box-shadow: 0 0 10px gold;
+  z-index: 10;
+">
+  Use Booster
+</button>
+
+<div id="mobileControls">
+  <button id="leftBtn">◀</button>
+  <button id="rightBtn">▶</button>
+  <button id="jumpBtn">🔼</button>
+  <button id="shootBtn">🚀</button>
+</div>
 <script>
 (() => {
   const canvas = document.getElementById('game');
@@ -207,7 +256,7 @@
   }
 
   // Update game state
-  function update() {
+  function update(dt) {
     if (gameOver || paused) return;
 
     // Move ball left/right
@@ -234,10 +283,10 @@
      playBeep(600, 100);
     }
 
-    ball.vy += GRAVITY;
+    ball.vy += GRAVITY * dt;
 
-    ball.x += ball.vx;
-    ball.y += ball.vy;
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
 
     // Keep ball inside horizontal bounds
     if (ball.x - ball.radius < 0) ball.x = ball.radius;
@@ -350,7 +399,7 @@
 
     // Update enemies
     enemies.forEach(e => {
-      e.x += e.vx;
+      e.x += e.vx * dt;
       if (e.x < e.platform.x) {
         e.x = e.platform.x;
         e.vx *= -1;
@@ -397,7 +446,7 @@ if (Math.random() < 0.01) {
 // Update enemy rockets
 for (let i = enemyRockets.length - 1; i >= 0; i--) {
   let r = enemyRockets[i];
-  r.y += r.speed;
+  r.y += r.speed * dt;
   if (r.y - r.radius > HEIGHT) {
     enemyRockets.splice(i, 1);
     continue;
@@ -418,7 +467,7 @@ for (let i = enemyRockets.length - 1; i >= 0; i--) {
 
 // BOOSTER JUMP
 if ((keys['ArrowUp'] || keys['KeyW']) && boosterCount > 0 && !usedBooster) {
-  ball.vy = -20;
+  ball.vy = -20 * dt; 
   boosterCount--;
   usedBooster = true;
   playBeep(1200, 200);
@@ -769,6 +818,7 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
     ctx.fillStyle = 'orange';
     ctx.font = '20px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
     ctx.fillText(`Score: ${score}`, 20, 30);
+    ctx.fillText(`Boosters: ${boosterCount}`, 20, 55);
 
     // Instructions
     if (gameOver) {
@@ -783,11 +833,15 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
   }
 
   // Main loop
-  function loop() {
-    update();
-    draw();
-    requestAnimationFrame(loop);
-  }
+  let lastTime = performance.now();
+  function loop(currentTime) {
+   const dt = (currentTime - lastTime) / (1000 / 60); // scale relative to 60fps
+   lastTime = currentTime;
+
+   update(dt);
+   draw();
+   requestAnimationFrame(loop);
+ }
 
   
   // Add touch controls only if device supports touch
@@ -813,9 +867,48 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
     });
   }
 
-  loop();
+  document.getElementById('useBooster').addEventListener('click', () => {
+  if (boosterCount > 0 && !usedBooster) {
+    ball.vy = -20;
+    boosterCount--;
+    usedBooster = true;
+    playBeep(1200, 200);
+  }
+});
+
+document.getElementById('leftBtn').addEventListener('touchstart', () => {
+  keys['ArrowLeft'] = true;
+});
+document.getElementById('leftBtn').addEventListener('touchend', () => {
+  keys['ArrowLeft'] = false;
+});
+
+document.getElementById('rightBtn').addEventListener('touchstart', () => {
+  keys['ArrowRight'] = true;
+});
+document.getElementById('rightBtn').addEventListener('touchend', () => {
+  keys['ArrowRight'] = false;
+});
+
+document.getElementById('shootBtn').addEventListener('touchstart', () => {
+  shootRocket();
+});
+
+document.getElementById('jumpBtn').addEventListener('touchstart', () => {
+  if (boosterCount > 0 && !usedBooster) {
+    ball.vy = -20;
+    boosterCount--;
+    usedBooster = true;
+    playBeep(1200, 200);
+  }
+});
+
+
+requestAnimationFrame(loop);
 })();
 </script>
+
+
 
 </body>
 </html>
