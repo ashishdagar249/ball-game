@@ -71,6 +71,22 @@
   Use Booster
 </button>
 
+<button id="pauseBtn" style="
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  padding: 12px 18px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: none;
+  background: #ccc;
+  color: black;
+  box-shadow: 0 0 10px #aaa;
+  z-index: 10;
+">
+  Pause ⏸
+</button>
+
 <div id="mobileControls">
   <button id="leftBtn">◀</button>
   <button id="rightBtn">▶</button>
@@ -138,6 +154,7 @@
   let powerupTimer = 0;
 
   let score = 0;
+  let bestScore = parseInt(localStorage.getItem('bestScore') || '0');
   let gameOver = false;
   let paused = false;
 
@@ -250,6 +267,10 @@
       gameOver = true;
       playBeep(200, 800);
       alert(`Game Over! Your Score is: ${score}`);
+      if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('bestScore', bestScore);
+      }
       // Reload game after alert
       window.location.reload();
     }
@@ -818,6 +839,7 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
     ctx.fillStyle = 'orange';
     ctx.font = '20px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
     ctx.fillText(`Score: ${score}`, 20, 30);
+    ctx.fillText(`Best: ${bestScore}`, 20, 75);
     ctx.fillText(`Boosters: ${boosterCount}`, 20, 55);
 
     // Instructions
@@ -903,6 +925,9 @@ document.getElementById('jumpBtn').addEventListener('touchstart', () => {
   }
 });
 
+document.getElementById('pauseBtn').addEventListener('click', () => {
+  paused = !paused;
+});
 
 requestAnimationFrame(loop);
 })();
