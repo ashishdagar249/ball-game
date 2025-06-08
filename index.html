@@ -134,8 +134,10 @@
   const MAX_GAP_Y = 70;    // adagar 130
 
   let enemyRockets = [];
-  let boosterCount = 0;
+  let boosterCount = 2;
   let usedBooster = false;
+  let boss = null;
+  let bossCooldown = 0;
 
   // Arrays
   let platforms = [];
@@ -160,6 +162,24 @@
 
   // Key input
   const keys = {};
+  // Optional tilt controls for mobile
+  if (window.DeviceOrientationEvent) {
+    window.addEventListener('deviceorientation', function(e) {
+      const gamma = e.gamma; // Left/Right tilt (in degrees)
+
+      if (gamma < -5) {
+        keys['ArrowLeft'] = true;
+        keys['ArrowRight'] = false;
+      } else if (gamma > 5) {
+        keys['ArrowRight'] = true;
+        keys['ArrowLeft'] = false;
+      } else {
+        keys['ArrowLeft'] = false;
+        keys['ArrowRight'] = false;
+      }
+    });
+  }
+
   window.addEventListener('keydown', e => {
     keys[e.code] = true;
     // Shoot rocket on spacebar
@@ -238,6 +258,19 @@
       platform,
     };
   }
+
+  function spawnBoss() {
+    boss = {
+      x: WIDTH / 2 - 50,
+      y: 50,
+      width: 100,
+      height: 40,
+      vx: 1.5,
+      health: 10,
+      cooldown: 100,
+    };
+  }
+
 
   // Create powerup
   function createPowerup(x, y) {
@@ -376,12 +409,29 @@
     // Update rockets
     for (let i = rockets.length - 1; i >= 0; i--) {
       let r = rockets[i];
-      r.y -= 8;
+      r.y -= 8 * dt;
       r.lifetime--;
       if (r.lifetime <= 0 || r.y + r.radius < 0) {
         rockets.splice(i, 1);
         continue;
       }
+
+      // Check collision with enemy rockets
+    for (let j = enemyRockets.length - 1; j >= 0; j--) {
+      let e = enemyRockets[j];
+      const dx = e.x - r.x;
+      const dy = e.y - r.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < r.radius + e.radius) {
+      // Destroy both rockets
+        enemyRockets.splice(j, 1);
+        rockets.splice(i, 1);
+        createParticles(r.x, r.y, '255,255,0', 30);
+        playBeep(700, 100);
+        break;
+      }
+    }
+
 
       // Check collision with enemies
       for (let j = enemies.length - 1; j >= 0; j--) {
@@ -398,6 +448,23 @@
           break;
         }
       }
+      // === Check rocket hit on boss ===
+      if (boss &&
+        r.x > boss.x && r.x < boss.x + boss.width &&
+        r.y > boss.y && r.y < boss.y + boss.height) {
+        rockets.splice(i, 1);
+        boss.health--;
+        createParticles(r.x, r.y, '255,0,255', 25);
+        playBeep(500, 100);
+
+      if (boss.health <= 0) {
+        score += 200;
+        createParticles(boss.x + boss.width / 2, boss.y, '255,0,255', 80);
+        playBeep(200, 300);
+        boss = null;
+      }
+      }
+
 
       // Check collision with break platforms - break on rocket hit
       for (let k = 0; k < platforms.length; k++) {
@@ -430,6 +497,29 @@
         e.vx *= -1;
       }
     });
+
+    // === Boss Update ===
+  if (boss) {
+    // Move side to side
+    boss.x += boss.vx * dt;
+    if (boss.x < 0 || boss.x + boss.width > WIDTH) {
+      boss.vx *= -1;
+    }
+
+    // Fire tracking rocket
+    boss.cooldown -= dt;
+    if (boss.cooldown <= 0) {
+      boss.cooldown = 100;
+      enemyRockets.push({
+        x: boss.x + boss.width / 2,
+        y: boss.y + boss.height,
+        radius: 6,
+        speed: 3,
+        tracking: true, // Mark this rocket as tracking
+      });
+    }
+  }
+
 
     // Check collision between ball and enemies
     enemies.forEach(e => {
@@ -467,7 +557,16 @@ if (Math.random() < 0.01) {
 // Update enemy rockets
 for (let i = enemyRockets.length - 1; i >= 0; i--) {
   let r = enemyRockets[i];
-  r.y += r.speed * dt;
+  if (r.tracking) {
+    const dx = ball.x - r.x;
+    const dy = ball.y - r.y;
+    const angle = Math.atan2(dy, dx);
+    r.x += Math.cos(angle) * r.speed * dt;
+    r.y += Math.sin(angle) * r.speed * dt;
+  } else {
+    r.y += r.speed * dt;
+  }
+
   if (r.y - r.radius > HEIGHT) {
     enemyRockets.splice(i, 1);
     continue;
@@ -566,6 +665,11 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
       });
 
       score += Math.floor(dy);
+      // Spawn boss every 1000 points
+      if (!boss && score > 0 && score % 1000 < 50) {
+        spawnBoss();
+      }
+
     }
 
     // Remove platforms below screen
@@ -758,6 +862,21 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
       ctx.ellipse(e.x + (3 * e.width) / 4, e.y + e.height / 2, 3, 5, 0, 0, Math.PI * 2);
       ctx.fill();
     });
+
+    if (boss) {
+      ctx.fillStyle = '#ff00ff';
+      ctx.shadowColor = '#aa00aa';
+      ctx.shadowBlur = 10;
+      ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+
+      // Health bar
+      ctx.fillStyle = '#000';
+      ctx.fillRect(boss.x, boss.y - 10, boss.width, 6);
+      ctx.fillStyle = '#0f0';
+      ctx.fillRect(boss.x, boss.y - 10, boss.width * (boss.health / 10), 6);
+      ctx.shadowBlur = 0;
+    }
+
 
     // Draw powerups
     powerups.forEach(p => {
