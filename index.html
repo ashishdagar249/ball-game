@@ -128,10 +128,12 @@
     MOVING: 'moving',
   };
 
-  const PLATFORM_WIDTH = 100;
+  let PLATFORM_WIDTH = 100; // Will update based on score
   const PLATFORM_HEIGHT = 15;
   const MIN_GAP_Y = 60;   // adagar 70
   const MAX_GAP_Y = 70;    // adagar 130
+
+  let lastBossScore = -1000;
 
   let enemyRockets = [];
   let boosterCount = 2;
@@ -141,6 +143,7 @@
 
   // Arrays
   let platforms = [];
+  let platformCount = 0;
   let enemies = [];
   let rockets = [];
   let particles = [];
@@ -163,22 +166,22 @@
   // Key input
   const keys = {};
   // Optional tilt controls for mobile
-  if (window.DeviceOrientationEvent) {
-    window.addEventListener('deviceorientation', function(e) {
-      const gamma = e.gamma; // Left/Right tilt (in degrees)
+  // if (window.DeviceOrientationEvent) {
+  //   window.addEventListener('deviceorientation', function(e) {
+  //     const gamma = e.gamma; // Left/Right tilt (in degrees)
 
-      if (gamma < -5) {
-        keys['ArrowLeft'] = true;
-        keys['ArrowRight'] = false;
-      } else if (gamma > 5) {
-        keys['ArrowRight'] = true;
-        keys['ArrowLeft'] = false;
-      } else {
-        keys['ArrowLeft'] = false;
-        keys['ArrowRight'] = false;
-      }
-    });
-  }
+  //     if (gamma < -5) {
+  //       keys['ArrowLeft'] = true;
+  //       keys['ArrowRight'] = false;
+  //     } else if (gamma > 5) {
+  //       keys['ArrowRight'] = true;
+  //       keys['ArrowLeft'] = false;
+  //     } else {
+  //       keys['ArrowLeft'] = false;
+  //       keys['ArrowRight'] = false;
+  //     }
+  //   });
+  // }
 
   window.addEventListener('keydown', e => {
     keys[e.code] = true;
@@ -543,16 +546,33 @@
 
     //
     // Enemy shooting logic
-if (Math.random() < 0.01) {
-  enemies.forEach(e => {
+// Shooting frequency scales with score
+// const shootChance = Math.min(0.001 + score / 50000, 0.05); // 1% to 5%    //adagar 0.01 changed to 0.001
+// if (Math.random() < shootChance) {
+//   enemies.forEach(e => {
+//     enemyRockets.push({
+//       x: e.x + e.width / 2,
+//       y: e.y + e.height,
+//       radius: 5,
+//       speed: 4,
+//     });
+//   });
+// }
+
+// const shootChance = Math.min(0.01 + score / 100000, 0.02); // 1% to 2%
+const shootChance = Math.min(0.003 + score / 150000, 0.015);
+enemies.forEach(e => {
+  if (Math.random() < shootChance && e.y > 0 && e.y < HEIGHT) {
     enemyRockets.push({
       x: e.x + e.width / 2,
       y: e.y + e.height,
       radius: 5,
       speed: 4,
     });
-  });
-}
+  }
+});
+
+
 
 // Update enemy rockets
 for (let i = enemyRockets.length - 1; i >= 0; i--) {
@@ -664,11 +684,17 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
         p.y += dy;
       });
 
-      score += Math.floor(dy);
+      score += Math.floor(dy * 0.25); // 4x slower scoring
+
       // Spawn boss every 1000 points
-      if (!boss && score > 0 && score % 1000 < 50) {
-        spawnBoss();
-      }
+      // if (!boss && score > 0 && score % 1000 < 50) {
+      //   spawnBoss();
+      // }
+      if (!boss && score - lastBossScore >= 4000 && score % 1000 < 50) {
+  spawnBoss();
+  lastBossScore = score;
+}
+
 
     }
 
@@ -681,20 +707,37 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
     // Remove powerups below screen
     powerups = powerups.filter(p => p.y < HEIGHT + 50);
 
+    
     // Generate new platforms
     while (platforms.length < 20) {  //  <10
       const last = platforms[platforms.length - 1];
-      let newY = last.y - randomRange(MIN_GAP_Y, MAX_GAP_Y);
+
+      // Adjust platform difficulty with score
+      let difficulty = Math.min(score / 1000, 5); // max 5 units
+      PLATFORM_WIDTH = Math.max(50, 100 - difficulty * 10); // shrink to 50px min
+      let gapY = randomRange(MIN_GAP_Y + difficulty * 5, MAX_GAP_Y + difficulty * 5);
+
+
+      let newY = last.y - gapY;
+
 
       // Ensure next platform is reachable, add normal platform next to spike platforms
       let safeX = randomRange(50, WIDTH - PLATFORM_WIDTH - 50);
 
       // 70% normal, 20% moving, 10% spike or break platform
+      // Spike platforms appear more often as score increases
       let typeChance = Math.random();
+      let spikeChance = Math.min(0.1 + score / 5000, 0.4); // from 10% to 40%
+
       let pType;
-      if (typeChance < 0.7) pType = PLATFORM_TYPES.NORMAL;
-      else if (typeChance < 0.9) pType = PLATFORM_TYPES.MOVING;
-      else pType = Math.random() < 0.5 ? PLATFORM_TYPES.SPIKE : PLATFORM_TYPES.BREAK;
+      if (typeChance < 0.7) {
+        pType = PLATFORM_TYPES.NORMAL;
+      } else if (typeChance < 0.9) {
+        pType = PLATFORM_TYPES.MOVING;
+      } else {
+        pType = Math.random() < spikeChance ? PLATFORM_TYPES.SPIKE : PLATFORM_TYPES.BREAK;
+      }
+
 
       let newPlatform = {
         x: safeX,
@@ -749,14 +792,27 @@ if (!keys['ArrowUp'] && !keys['KeyW']) {
       }
 
       // Spawn enemy on some safe platforms
-      if (pType !== PLATFORM_TYPES.SPIKE && pType !== PLATFORM_TYPES.BREAK && Math.random() < 0.2) {
-        enemies.push(createEnemy(newPlatform));
-        newPlatform.hasEnemy = true;
-      }
+  // Enemy chance and speed increase with score
+  let enemyChance = Math.min(0.1 + score / 10000, 0.6); // from 20% to 60%  //adagar 0.2 changed to 0.1
+  
+  if ( platformCount > 4 && pType !== PLATFORM_TYPES.SPIKE && pType !== PLATFORM_TYPES.BREAK && Math.random() < enemyChance) {
+    let enemy = createEnemy(newPlatform);
+
+    // Increase enemy speed as difficulty rises
+    let speedBoost = Math.min(score / 2000, 2); // +2 max
+    enemy.vx = (enemy.vx < 0 ? -1 : 1) * (1.5 + speedBoost); // 1.5 base + boost
+
+    enemies.push(enemy);
+    newPlatform.hasEnemy = true;
+  }
+
 
       // Spawn powerups on some platforms without enemies
       if (!newPlatform.hasEnemy && Math.random() < 0.15) {
         powerups.push(createPowerup(newPlatform.x + PLATFORM_WIDTH / 2, newPlatform.y - 20));
+      }
+      if(platformCount<10){
+      platformCount++;
       }
     }
     if (ball.scaleY < 1) {
